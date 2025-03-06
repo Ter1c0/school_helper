@@ -18,6 +18,31 @@ def save_homework(subject, task):
             pass
         finally:
             conn.close()
+            
+def save_demo(subject, task):
+    conn = connect_db()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO demo (subject, demo_task) VALUES (?, ?)", (subject, task))
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        finally:
+            conn.close()
+            
+def save_schedule(day, subject, time):
+    conn = connect_db()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO schedule (day, subject, time) VALUES (?, ?, ?)", 
+                          (day, subject, time))
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        finally:
+            conn.close()
 
 def get_homework(subject):
     conn = connect_db()
