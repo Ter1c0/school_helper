@@ -1,101 +1,137 @@
-# === controllers.py ===
-from database import get_homework, get_demo
 
 from telebot import types
-from models import get_subjects, get_content_types
-
-def handle_homework(bot, message):
-    try:
-        subjects = get_subjects()
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for subject in subjects:
-            keyboard.add(types.KeyboardButton(subject))
-        bot.send_message(message.chat.id, "Выберите предмет для просмотра Д/З:", reply_markup=keyboard)
-        bot.register_next_step_handler(message, process_homework_subject, bot)
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
-
-def process_homework_subject(message, bot):
-    try:
-        subject = message.text.strip()
-        if subject not in get_subjects():
-            bot.send_message(message.chat.id, "Некорректный предмет. Попробуйте снова.", reply_markup=main_menu())
-            return
-        tasks = get_homework(subject)
-        reply = f"📚 Д/З по {subject}:\n" + ("\n".join([t[0] for t in tasks]) if tasks else "Заданий нет! Вы молодцы! 🎉")
-        bot.send_message(message.chat.id, reply, reply_markup=main_menu())
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
-
-def handle_demo(bot, message):
-    try:
-        subjects = get_subjects()
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for subject in subjects:
-            keyboard.add(types.KeyboardButton(subject))
-        bot.send_message(message.chat.id, "Выберите предмет для просмотра демо:", reply_markup=keyboard)
-        bot.register_next_step_handler(message, process_demo_subject, bot)
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
-
-def process_demo_subject(message, bot):
-    try:
-        subject = message.text.strip()
-        if subject not in get_subjects():
-            bot.send_message(message.chat.id, "Некорректный предмет. Попробуйте снова.", reply_markup=main_menu())
-            return
-        demos = get_demo(subject)
-        reply = f"✍ Демо по {subject}:\n" + ("\n".join([t[0] for t in demos]) if demos else "Нет доступных демо-заданий!")
-        bot.send_message(message.chat.id, reply, reply_markup=main_menu())
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
+from database import get_homework, get_demo, get_schedule
+from models import get_subjects, get_days
 
 def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add('📚 Д/З 📚', '🕒 Расписание 🕒')
-    keyboard.add('✍ Демо ✍', '➕ Добавить ➕')
+    keyboard.add(
+        types.KeyboardButton("📚 Д/З 📚"),
+        types.KeyboardButton("✍ Демо ✍")
+    )
+    keyboard.add(
+        types.KeyboardButton("🕒 Расписание 🕒"),
+        types.KeyboardButton("➕ Добавить ➕")
+    )
     return keyboard
 
+def homework_view_menu():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton("📚 Все задания 📚"))
+    keyboard.add(types.KeyboardButton("📖 Выбрать предмет 📖"))
+    keyboard.add(types.KeyboardButton("🔙 Назад"))
+    return keyboard
+
+def format_homework(homework):
+    if not homework:
+        return "Нет домашних заданий"
+    formatted = "📚 Домашние задания:\n\n"
+    for subj, task, due_date in homework:
+        formatted += f"📌 {subj}\n📝 {task}\n📅 Сдать до: {due_date}\n\n"
+    return formatted
+
+def handle_homework(bot, message):
+    bot.send_message(message.chat.id, "Выберите опцию:", 
+                    reply_markup=homework_view_menu())
+    bot.register_next_step_handler(message, process_homework_choice, bot)
+
+def process_homework_choice(message, bot):
+    text = message.text.strip()
+    if text == "📚 Все задания 📚":
+        homework = get_homework()
+        bot.send_message(message.chat.id, format_homework(homework), 
+                        reply_markup=main_menu())
+    elif text == "📖 Выбрать предмет 📖":
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for subject in get_subjects():
+            keyboard.add(types.KeyboardButton(subject))
+        keyboard.add(types.KeyboardButton("🔙 Назад"))
+        bot.send_message(message.chat.id, "Выберите предмет:", 
+                        reply_markup=keyboard)
+        bot.register_next_step_handler(message, show_subject_homework, bot)
+    elif text == "🔙 Назад":
+        bot.send_message(message.chat.id, "Главное меню:", 
+                        reply_markup=main_menu())
+
+def show_subject_homework(message, bot):
+    subject = message.text.strip()
+    if subject == "🔙 Назад":
+        bot.send_message(message.chat.id, "Главное меню:", 
+                        reply_markup=main_menu())
+        return
+    homework = get_homework(subject)
+    bot.send_message(message.chat.id, format_homework(homework), 
+                    reply_markup=main_menu())
+
+def demo_view_menu():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton("📚 Все демо версии 📚"))
+    keyboard.add(types.KeyboardButton("📖 Выбрать предмет 📖"))
+    keyboard.add(types.KeyboardButton("🔙 Назад"))
+    return keyboard
+
+def handle_demo(bot, message):
+    bot.send_message(message.chat.id, "Выберите опцию:", 
+                    reply_markup=demo_view_menu())
+    bot.register_next_step_handler(message, process_demo_choice, bot)
+
+def process_demo_choice(message, bot):
+    text = message.text.strip()
+    if text == "📚 Все демо версии 📚":
+        demos = get_demo()
+        text = "✍ Демо задания:\n\n" + "\n".join(f"{subj}: {task}" 
+                                                for subj, task in demos)
+        bot.send_message(message.chat.id, text or "Нет демо заданий", 
+                        reply_markup=main_menu())
+    elif text == "📖 Выбрать предмет 📖":
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for subject in get_subjects():
+            keyboard.add(types.KeyboardButton(subject))
+        keyboard.add(types.KeyboardButton("🔙 Назад"))
+        bot.send_message(message.chat.id, "Выберите предмет:", 
+                        reply_markup=keyboard)
+        bot.register_next_step_handler(message, show_subject_demo, bot)
+    elif text == "🔙 Назад":
+        bot.send_message(message.chat.id, "Главное меню:", 
+                        reply_markup=main_menu())
+
+def show_subject_demo(message, bot):
+    subject = message.text.strip()
+    if subject == "🔙 Назад":
+        bot.send_message(message.chat.id, "Главное меню:", 
+                        reply_markup=main_menu())
+        return
+    demos = [demo for demo in get_demo() if demo[0] == subject]
+    text = f"✍ Демо задания по {subject}:\n\n" + "\n".join(f"{task}" 
+                                                          for _, task in demos)
+    bot.send_message(message.chat.id, text or f"Нет демо заданий по {subject}", 
+                    reply_markup=main_menu())
+
 def handle_schedule(bot, message):
-    try:
-        from models import get_days
-        days = get_days()
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for day in days:
-            keyboard.add(types.KeyboardButton(day))
-        bot.send_message(message.chat.id, "Выберите день недели для просмотра расписания:", reply_markup=keyboard)
-        bot.register_next_step_handler(message, process_schedule_view, bot)
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for day in get_days():
+        keyboard.add(types.KeyboardButton(day))
+    keyboard.add(types.KeyboardButton("📅 Все дни"))
+    keyboard.add(types.KeyboardButton("🔙 Назад"))
+    bot.send_message(message.chat.id, "Выберите день недели:", 
+                    reply_markup=keyboard)
+    bot.register_next_step_handler(message, show_schedule, bot)
 
-def process_schedule_view(message, bot):
-    try:
-        day = message.text.strip()
-        if day not in get_days():
-            bot.send_message(message.chat.id, "Некорректный день. Попробуйте снова.", reply_markup=main_menu())
-            return
-        from database import get_schedule
-        schedules = get_schedule(day)
-        reply = f"🕒 Расписание на {day}:\n" + ("\n".join([s[0] for s in schedules]) if schedules else "Расписание не найдено!")
-        bot.send_message(message.chat.id, reply, reply_markup=main_menu())
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
-
-def handle_add(bot, message):
-    try:
-        content_types = get_content_types()
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for content_type in content_types:
-            keyboard.add(types.KeyboardButton(content_type))
-        bot.send_message(message.chat.id, "Выберите тип контента:", reply_markup=keyboard)
-        bot.register_next_step_handler(message, process_content_type, bot)
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
-
-
-def process_content_type(message, bot):
-    try:
-        content_type = message.text.strip()
-        bot.send_message(message.chat.id, f"Вы выбрали тип контента: {content_type}.  Дальнейшая реализация добавления контента будет добавлена позже.")
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка: {e}')
+def show_schedule(message, bot):
+    text = message.text.strip()
+    if text == "🔙 Назад":
+        bot.send_message(message.chat.id, "Главное меню:", 
+                        reply_markup=main_menu())
+        return
+    
+    schedule = get_schedule()
+    if text == "📅 Все дни":
+        text = "🕒 Расписание:\n\n" + "\n".join(f"{day} - {subj}: {time}" 
+                                               for day, subj, time in schedule)
+    else:
+        day_schedule = [s for s in schedule if s[0] == text]
+        text = f"🕒 Расписание на {text}:\n\n" + "\n".join(f"{subj}: {time}" 
+                                                          for _, subj, time in day_schedule)
+    
+    bot.send_message(message.chat.id, text or "Расписание пусто", 
+                    reply_markup=main_menu())
